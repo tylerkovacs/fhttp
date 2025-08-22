@@ -2053,6 +2053,15 @@ func (pc *persistConn) readLoop() {
 	defer func() {
 		pc.close(closeErr)
 		pc.t.removeIdleConn(pc)
+
+		if r := recover(); r != nil {
+			panicError, ok := r.(error)
+			if !ok {
+				panicError = errors.New(fmt.Sprintf("%s", r))
+			}
+
+			log.Printf("panic in bodganfinn/fttp/transport.go %+v\n", panicError)
+		}
 	}()
 
 	tryPutIdleConn := func(trace *httptrace.ClientTrace) bool {
