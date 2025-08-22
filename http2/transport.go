@@ -2082,6 +2082,44 @@ func (rl *clientConnReadLoop) cleanup() {
 	} else if err == io.EOF {
 		err = io.ErrUnexpectedEOF
 	}
+
+	// Monkeypatch: CloseWithError panics when err == nil. It's not clear what is causing
+	// err to be nil, but we want to ensure that CloseWithError is called so that it cleans
+	// up resources as necessary.
+	//
+	// As an alternative, might want to consider adding a recover() to catch the panic further
+	// up the callstack. Decided to just put a placeholder error here instead since that seems
+	// more likely to cleanup connection resources.
+	//
+	// Stack:
+	/*
+	   panic: err must be non-nil
+	   [signal SIGSEGV: segmentation violation code=0x1 addr=0x28 pc=0x17b8d7c]
+
+	   goroutine 28942052 [running]:
+	   github.com/bogdanfinn/fhttp/http2.(*pipe).closeWithError(0x14?, 0xc078fd6990?, {0x0?, 0x0?}, 0xc05ac02a70?)
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/pipe.go:108 +0x225
+	   github.com/bogdanfinn/fhttp/http2.(*pipe).CloseWithError(...)
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/pipe.go:95
+	   github.com/bogdanfinn/fhttp/http2.(*clientConnReadLoop).cleanup(0xc08894ec40?)
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/transport.go:2076 +0x39b
+	   panic({0x3ebb660?, 0x73abe50?})
+	           /usr/local/go/src/runtime/panic.go:785 +0x132
+	   github.com/bogdanfinn/fhttp/http2.(*pipe).Write(0xc3fadb5d40?, {0xc084c86000?, 0xc05ac02de8?, 0x17b1ff4?})
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/pipe.go:87 +0x15c
+	   github.com/bogdanfinn/fhttp/http2.(*clientConnReadLoop).processData(0xc4586a5fa0, 0xc2ce99d0b0)
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/transport.go:2572 +0x406
+	   github.com/bogdanfinn/fhttp/http2.(*clientConnReadLoop).run(0xc4586a5fa0)
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/transport.go:2131 +0x51e
+	   github.com/bogdanfinn/fhttp/http2.(*ClientConn).readLoop(0xc3fadb5d40)
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/transport.go:2021 +0x5a
+	   created by github.com/bogdanfinn/fhttp/http2.(*Transport).newClientConn in goroutine 28942051
+	           /home/tyler/go/src/gitlab.com/tylerkovacs/hbb/vendor/github.com/bogdanfinn/fhttp/http2/transport.go:860 +0xbf1
+	*/
+	if err == nil {
+		err = errors.New("placeholder error to fix fhttp mystery issue")
+	}
+
 	for _, cs := range cc.streams {
 		cs.bufPipe.CloseWithError(err) // no-op if already closed
 		select {
